@@ -5,8 +5,8 @@ task.spawn(function()
     local cg = game:GetService("CoreGui")
 
     _G.plr     = p.LocalPlayer
-    _G.fakename  = "By𝑽𝑬𝑹𝑳𝑨𝑵𝑪𝑬"   -- غيّر هذا للاسم اللي تبيه
-    _G.fakeuser  = "By𝑽𝑬𝑹𝑳𝑨𝑵𝑪𝑬"   -- غيّر هذا للـ username اللي تبيه
+    _G.fakename  = "YourFakeName"   -- غيّر هذا للاسم اللي تبيه
+    _G.fakeuser  = "YourFakeUser"   -- غيّر هذا للـ username اللي تبيه
 
     local u,n = nil,nil
     local t,s,cns = {},{},{}
@@ -803,5 +803,241 @@ UIS.InputBegan:Connect(function(input, gp)
         print(STATE.Enabled and "[STBB] ON" or "[STBB] OFF")
     end
 end)
+-- ====================== RADAR ======================
+local radarEnabled = false
+local RADAR_RANGE = 1000
+local RADAR_SIZE = 200
+local RADAR_CENTER = RADAR_SIZE / 2
 
+-- Radar Frame
+local radarGui = Instance.new("Frame", main)
+radarGui.Name = "RadarFrame"
+radarGui.Size = UDim2.new(0, RADAR_SIZE, 0, RADAR_SIZE)
+radarGui.Position = UDim2.new(-1, -10, 0, 0)
+radarGui.BackgroundColor3 = Color3.fromRGB(8, 14, 8)
+radarGui.BorderSizePixel = 0
+radarGui.Visible = false
+Instance.new("UICorner", radarGui).CornerRadius = UDim.new(1, 0)
+
+local radarStroke = Instance.new("UIStroke", radarGui)
+radarStroke.Color = Color3.fromRGB(0, 200, 50)
+radarStroke.Thickness = 1.5
+
+-- Radar circles (decorative)
+local function makeCircle(parent, sizeScale, transparency)
+    local c = Instance.new("Frame", parent)
+    c.Size = UDim2.new(sizeScale, 0, sizeScale, 0)
+    c.Position = UDim2.new((1 - sizeScale)/2, 0, (1 - sizeScale)/2, 0)
+    c.BackgroundTransparency = 1
+    c.BorderSizePixel = 0
+    Instance.new("UICorner", c).CornerRadius = UDim.new(1, 0)
+    local st = Instance.new("UIStroke", c)
+    st.Color = Color3.fromRGB(0, 180, 40)
+    st.Thickness = 0.8
+    st.Transparency = transparency
+    return c
+end
+
+makeCircle(radarGui, 0.33, 0.5)
+makeCircle(radarGui, 0.66, 0.65)
+makeCircle(radarGui, 1.0, 0.75)
+
+-- Cross lines
+local crossH = Instance.new("Frame", radarGui)
+crossH.Size = UDim2.new(1, 0, 0, 1)
+crossH.Position = UDim2.new(0, 0, 0.5, 0)
+crossH.BackgroundColor3 = Color3.fromRGB(0, 180, 40)
+crossH.BackgroundTransparency = 0.7
+crossH.BorderSizePixel = 0
+
+local crossV = Instance.new("Frame", radarGui)
+crossV.Size = UDim2.new(0, 1, 1, 0)
+crossV.Position = UDim2.new(0.5, 0, 0, 0)
+crossV.BackgroundColor3 = Color3.fromRGB(0, 180, 40)
+crossV.BackgroundTransparency = 0.7
+crossV.BorderSizePixel = 0
+
+-- Player dot (center - green)
+local selfDot = Instance.new("Frame", radarGui)
+selfDot.Size = UDim2.new(0, 8, 0, 8)
+selfDot.Position = UDim2.new(0.5, -4, 0.5, -4)
+selfDot.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+selfDot.BorderSizePixel = 0
+Instance.new("UICorner", selfDot).CornerRadius = UDim.new(1, 0)
+
+-- Radar label
+local radarLabel = Instance.new("TextLabel", radarGui)
+radarLabel.Size = UDim2.new(1, 0, 0, 14)
+radarLabel.Position = UDim2.new(0, 0, 1, 2)
+radarLabel.BackgroundTransparency = 1
+radarLabel.Text = "RADAR  1000m"
+radarLabel.TextColor3 = Color3.fromRGB(0, 200, 50)
+radarLabel.TextSize = 10
+radarLabel.Font = Enum.Font.GothamBold
+radarLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Dot pool
+local dotPool = {}
+local activeDots = {}
+
+local function getDot()
+    if #dotPool > 0 then
+        local d = table.remove(dotPool)
+        d.Visible = true
+        return d
+    end
+    local d = Instance.new("Frame", radarGui)
+    d.BorderSizePixel = 0
+    Instance.new("UICorner", d).CornerRadius = UDim.new(1, 0)
+
+    -- Tooltip
+    local tip = Instance.new("TextLabel", d)
+    tip.Name = "Tip"
+    tip.Size = UDim2.new(0, 120, 0, 18)
+    tip.Position = UDim2.new(1, 4, 0, 0)
+    tip.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    tip.BackgroundTransparency = 0.3
+    tip.TextColor3 = Color3.fromRGB(255, 220, 220)
+    tip.TextSize = 10
+    tip.Font = Enum.Font.Gotham
+    tip.TextXAlignment = Enum.TextXAlignment.Left
+    tip.Visible = false
+    tip.TextWrapped = true
+    Instance.new("UICorner", tip).CornerRadius = UDim.new(0, 4)
+
+    return d
+end
+
+local function releaseDot(d)
+    d.Visible = false
+    table.insert(dotPool, d)
+end
+
+-- HP category
+local function getDotStyle(hp)
+    if hp <= 1000 then
+        -- Small: tiny red dot
+        return 6, Color3.fromRGB(255, 80, 80), "S"
+    elseif hp <= 11250 then
+        -- Medium: medium orange
+        return 9, Color3.fromRGB(255, 160, 0), "M"
+    elseif hp <= 50000 then
+        -- Large: big yellow
+        return 13, Color3.fromRGB(255, 230, 0), "L"
+    else
+        -- Boss: large pulsing red
+        return 17, Color3.fromRGB(255, 0, 80), "BOSS"
+    end
+end
+
+-- Radar toggle button
+local radarBtn = Instance.new("TextButton", main)
+radarBtn.Size = UDim2.new(0, 100, 0, 24)
+radarBtn.Position = UDim2.new(0, 10, 0, 375)  -- أسفل الـ GUI
+radarBtn.BackgroundColor3 = Color3.fromRGB(10, 80, 30)
+radarBtn.BorderSizePixel = 0
+radarBtn.Text = "📡 Radar: OFF"
+radarBtn.TextColor3 = Color3.fromRGB(150, 255, 150)
+radarBtn.TextSize = 12
+radarBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", radarBtn).CornerRadius = UDim.new(0, 6)
+
+-- مدّ الـ main frame شوي عشان يسع الزر
+main.Size = UDim2.new(0, 340, 0, 408)
+
+radarBtn.MouseButton1Click:Connect(function()
+    radarEnabled = not radarEnabled
+    radarGui.Visible = radarEnabled
+    if radarEnabled then
+        radarBtn.BackgroundColor3 = Color3.fromRGB(20, 160, 60)
+        radarBtn.Text = "📡 Radar: ON"
+    else
+        radarBtn.BackgroundColor3 = Color3.fromRGB(10, 80, 30)
+        radarBtn.Text = "📡 Radar: OFF"
+        -- شيل كل النقاط
+        for _, d in pairs(activeDots) do releaseDot(d) end
+        activeDots = {}
+    end
+end)
+
+-- Radar update loop
+local lastRadarUpdate = 0
+RunService.RenderStepped:Connect(function()
+    if not radarEnabled then return end
+    if tick() - lastRadarUpdate < 0.05 then return end
+    lastRadarUpdate = tick()
+
+    local root = getActiveRoot()
+    if not root then return end
+    local rootPos = root.Position 
+    local rootCF  = root.CFrame
+
+    -- Release old dots
+    for _, d in pairs(activeDots) do releaseDot(d) end
+    activeDots = {}
+
+    -- Scan enemies
+    for _, model in pairs(Workspace:GetDescendants()) do
+        if model:IsA("Model") and model ~= lp.Character then
+            local hrp = model:FindFirstChild("HumanoidRootPart")
+            local hum = model:FindFirstChildWhichIsA("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+
+                local nl = model.Name:lower()
+                local isEnemy = false
+                for en in pairs(enemySet) do
+                    if nl:find(en, 1, true) then isEnemy = true break end
+                end
+                if not isEnemy then continue end
+
+                local isEx = false
+                for ex in pairs(exceptionSet) do
+                    if nl:find(ex, 1, true) then isEx = true break end
+                end
+                if isEx then continue end
+
+                local worldDiff = hrp.Position - rootPos
+                local dist = worldDiff.Magnitude
+                if dist > RADAR_RANGE then continue end
+
+                -- تحويل الإحداثيات للـ radar
+                -- نستخدم X و Z بس (top-down)
+                local localDiff = rootCF:VectorToObjectSpace(worldDiff)
+                local nx = -localDiff.X / RADAR_RANGE  -- يسار / يمين
+                local ny = -localDiff.Z / RADAR_RANGE  -- أمام / خلف
+
+                -- محدود داخل الدائرة
+                local mag = math.sqrt(nx*nx + ny*ny)
+                if mag > 1 then nx = nx/mag ny = ny/mag end
+
+                -- موقع النقطة في الـ frame
+                local px = RADAR_CENTER + nx * (RADAR_CENTER - 10)
+                local py = RADAR_CENTER + ny * (RADAR_CENTER - 10)
+
+                local hp = hum.Health
+                local dotSize, dotColor, category = getDotStyle(hp)
+
+                local d = getDot()
+                d.Size = UDim2.new(0, dotSize, 0, dotSize)
+                d.Position = UDim2.new(0, px - dotSize/2, 0, py - dotSize/2)
+                d.BackgroundColor3 = dotColor
+
+                -- Tooltip: اسم + hp + مسافة
+                local tip = d:FindFirstChild("Tip")
+                if tip then
+                    tip.Text = string.format("%s\nHP:%.0f\n%.0fm", model.Name:sub(1,15), hp, dist)
+                end
+
+                -- Boss يومض
+                if category == "BOSS" then
+                    local pulse = math.abs(math.sin(tick() * 4))
+                    d.BackgroundColor3 = Color3.fromRGB(255, math.floor(pulse*60), math.floor(pulse*80))
+                end
+
+                table.insert(activeDots, d)
+            end
+        end
+    end
+end)
+-- ====================== END RADAR ======================
 print("[STBB] Loaded | P = Toggle")

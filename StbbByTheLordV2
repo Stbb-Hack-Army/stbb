@@ -5,8 +5,8 @@ task.spawn(function()
     local cg = game:GetService("CoreGui")
 
     _G.plr     = p.LocalPlayer
-    _G.fakename  = "YourFakeName"   -- غيّر هذا للاسم اللي تبيه
-    _G.fakeuser  = "YourFakeUser"   -- غيّر هذا للـ username اللي تبيه
+    _G.fakename  = "By𝑽𝑬𝑹𝑳𝑨𝑵𝑪𝑬"   -- غيّر هذا للاسم اللي تبيه
+    _G.fakeuser  = "By𝑽𝑬𝑹𝑳𝑨𝑵𝑪𝑬"   -- غيّر هذا للـ username اللي تبيه
 
     local u,n = nil,nil
     local t,s,cns = {},{},{}

@@ -1,5 +1,115 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
+-- ====================== FAKE NAME (AUTO) ======================
+task.spawn(function()
+    local p = game:GetService("Players")
+    local cg = game:GetService("CoreGui")
 
+    _G.plr     = p.LocalPlayer
+    _G.fakename  = "YourFakeName"   -- غيّر هذا للاسم اللي تبيه
+    _G.fakeuser  = "YourFakeUser"   -- غيّر هذا للـ username اللي تبيه
+
+    local u,n = nil,nil
+    local t,s,cns = {},{},{}
+
+    local function gp()
+        if u and n then return end
+        pcall(function()
+            for _,v in pairs(cg.PlayerList.Children.OffsetFrame.PlayerScrollList.SizeOffsetFrame.ScrollingFrameContainer.PlayerDropDown.InnerFrame.PlayerHeader.Background.TextContainerFrame:GetChildren()) do
+                if v.Name=="PlayerName" then u=v end
+                if v.Name=="DisplayName" then n=v end
+            end
+        end)
+    end
+
+    local function gt()
+        if next(t) then return end
+        pcall(function()
+            for _,v in pairs(cg.PlayerList.Children.OffsetFrame.PlayerScrollList.SizeOffsetFrame.ScrollingFrameContainer.ScrollingFrameClippingFrame.ScrollingFrame.OffsetUndoFrame.TeamList_Neutral:GetChildren()) do
+                if string.find(v.Name,_G.plr.UserId) then table.insert(t,v) end
+            end
+        end)
+    end
+
+    local function gs()
+        if next(s) then return end
+        pcall(function()
+            for _,v in pairs(cg.RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.PageViewClipper.PageView.PageViewInnerFrame.Players:GetChildren()) do
+                if string.find(v.Name,_G.plr.Name) then table.insert(s,v) end
+            end
+        end)
+    end
+
+    local function f()
+        if u then u.Text="@".._G.fakeuser end
+        if n then n.Text=_G.fakename end
+    end
+
+    local function tl()
+        for _,v in pairs(t) do
+            pcall(function()
+                v.PlayerEntryContentFrame.OverlayFrame.NameFrame.PlayerName.PlayerName.Text=_G.fakename
+            end)
+        end
+    end
+
+    local function st()
+        for _,v in pairs(s) do
+            pcall(function()
+                v.NameLabel.Text="@".._G.fakeuser
+                v.DisplayNameLabel.Text=_G.fakename
+            end)
+        end
+    end
+
+    local function c()
+        local ch=_G.plr.Character
+        if not ch then return end
+        local h=ch:FindFirstChild("Humanoid")
+        if h then h.DisplayName=_G.fakename end
+        local hd=ch:FindFirstChild("Head")
+        if not hd then return end
+        if hd:FindFirstChild("NameLargeSize") then
+            hd.NameLargeSize.TextLabel.Text=_G.fakeuser
+        end
+        for _,v in pairs(hd:GetChildren()) do
+            if string.find(v.Name,"Name") and v:FindFirstChild("TextLabel") then
+                v.TextLabel.Text=_G.fakeuser
+            end
+        end
+    end
+
+    local function hk(o)
+        if not o or not (o:IsA("TextLabel") or o:IsA("TextButton")) then return end
+        if cns[o] then return end
+        local function up()
+            pcall(function()
+                if not _G.plr then return end
+                if o.Text then
+                    if string.find(o.Text,_G.plr.Name) then
+                        o.Text=o.Text:gsub(_G.plr.Name,_G.fakeuser)
+                    end
+                    if _G.plr.DisplayName~="" and string.find(o.Text,_G.plr.DisplayName) then
+                        o.Text=o.Text:gsub(_G.plr.DisplayName,_G.fakename)
+                    end
+                end
+            end)
+        end
+        up()
+        cns[o]=o:GetPropertyChangedSignal("Text"):Connect(up)
+    end
+
+    for _,v in pairs(cg:GetDescendants()) do hk(v) end
+    for _,v in pairs(p.LocalPlayer.PlayerGui:GetDescendants()) do hk(v) end
+    cg.DescendantAdded:Connect(function(v) hk(v) end)
+    p.LocalPlayer.PlayerGui.DescendantAdded:Connect(function(v) hk(v) end)
+
+    while task.wait() do
+        pcall(function()
+            gp() gt() gs() f() tl() st() c()
+        end)
+    end
+end)
+-- ====================== END FAKE NAME ======================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")

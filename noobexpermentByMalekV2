@@ -1,0 +1,570 @@
+-- =============================================
+-- Pro Hub v6.0
+-- ✅ Aim Bot = يلوك على الهدف + مربع أخضر
+-- ✅ Auto Shoot = لما يظهر المربع يطلق تلقائياً
+-- ✅ One Shot = يقتل من أول طلقة (محسّن)
+-- ✅ Auto Farm + Speed + Inf Health + Auto Ability
+-- =============================================
+ 
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
+ 
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera    = workspace.CurrentCamera
+local mouse     = player:GetMouse()
+ 
+-- =============================================
+-- إعدادات
+-- =============================================
+local CFG = {
+    AimSmoothing   = 0.15,
+    AimMaxRange    = 800,
+    AutoFarmDelay  = 0.05,
+    AutoShootDelay = 0.12,   -- وقت بين كل طلقة تلقائية
+    WalkSpeed      = 100,
+    ToggleKey      = Enum.KeyCode.Insert,
+}
+ 
+local states = {
+    aimBot    = false,
+    autoShoot = false,   -- يطلق تلقائياً لما يشوف الهدف
+    autoFarm  = false,
+    oneShot   = false,
+    speed     = false,
+    infHealth = false,
+    autoAbil  = false,
+}
+ 
+local currentTarget  = nil
+local highlights     = {}
+local lastShootTime  = 0
+ 
+-- =============================================
+-- مساعدات
+-- =============================================
+local function getMyChar() return player.Character end
+local function getMyHum()
+    local c = getMyChar(); return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function getMyHRP()
+    local c = getMyChar(); return c and c:FindFirstChild("HumanoidRootPart")
+end
+ 
+-- =============================================
+-- أقرب عدو للشاشة
+-- =============================================
+local function getClosestOnScreen()
+    local closest, best = nil, math.huge
+    local cx = camera.ViewportSize.X / 2
+    local cy = camera.ViewportSize.Y / 2
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == player then continue end
+        if not p.Character then continue end
+        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+        local hum = p.Character:FindFirstChild("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then continue end
+        local d3 = (hrp.Position - camera.CFrame.Position).Magnitude
+        if d3 > CFG.AimMaxRange then continue end
+        local sp, vis = camera:WorldToViewportPoint(hrp.Position)
+        if not vis then continue end
+        local d2 = math.sqrt((sp.X-cx)^2 + (sp.Y-cy)^2)
+        if d2 < best then best = d2; closest = p end
+    end
+    return closest
+end
+ 
+-- أقرب عدو بالمسافة
+local function getClosestByDist()
+    local closest, best = nil, math.huge
+    local myHRP = getMyHRP(); if not myHRP then return nil end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == player then continue end
+        if not p.Character then continue end
+        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+        local hum = p.Character:FindFirstChild("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then continue end
+        local d = (hrp.Position - myHRP.Position).Magnitude
+        if d < best then best = d; closest = p end
+    end
+    return closest, best
+end
+ 
+-- =============================================
+-- ESP - مربع أخضر حول الهدف
+-- =============================================
+local function clearHighlights()
+    for p, h in pairs(highlights) do
+        pcall(function() h:Destroy() end); highlights[p] = nil
+    end
+end
+ 
+local function setHighlight(tgt)
+    for p, h in pairs(highlights) do
+        if p ~= tgt then pcall(function() h:Destroy() end); highlights[p] = nil end
+    end
+    if not tgt or highlights[tgt] or not tgt.Character then return end
+    local h = Instance.new("Highlight")
+    h.FillColor           = Color3.fromRGB(0, 255, 80)
+    h.OutlineColor        = Color3.fromRGB(0, 255, 80)
+    h.FillTransparency    = 0.78
+    h.OutlineTransparency = 0
+    h.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Adornee             = tgt.Character
+    h.Parent              = tgt.Character
+    highlights[tgt]       = h
+end
+ 
+-- =============================================
+-- ONE SHOT - محسّن بالكامل
+-- يستخدم 3 طرق مع بعض
+-- =============================================
+local function killChar(char)
+    if not char then return end
+    -- تأكد إن هو عدو مو نفسك
+    if char == getMyChar() then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+ 
+    -- طريقة 1: مباشر
+    pcall(function() hum.Health = 0 end)
+    -- طريقة 2: TakeDamage
+    pcall(function() hum:TakeDamage(math.huge) end)
+    -- طريقة 3: كل Remote في الـ Character
+    pcall(function()
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("RemoteEvent") then
+                pcall(function() v:FireServer("damage", 99999) end)
+                pcall(function() v:FireServer(99999) end)
+            end
+        end
+    end)
+end
+ 
+-- =============================================
+-- AUTO SHOOT - يطلق تلقائياً على الهدف المقفول
+-- =============================================
+local function simulateShoot(targetChar)
+    if not targetChar then return end
+    local myChar = getMyChar()
+    if not myChar then return end
+    local myHRP  = getMyHRP()
+    if not myHRP then return end
+ 
+    local targetHRP  = targetChar:FindFirstChild("HumanoidRootPart")
+    local targetHead = targetChar:FindFirstChild("Head")
+    if not targetHRP then return end
+ 
+    -- لو One Shot شغّال اقتله مباشرة
+    if states.oneShot then
+        killChar(targetChar)
+        return
+    end
+ 
+    -- وإلا: محاكاة إطلاق حقيقي
+    -- طريقة 1: انقل نفسك جنبه وأطلق
+    local originalCF = myHRP.CFrame
+    local offset = (myHRP.Position - targetHRP.Position).Unit * 4
+    myHRP.CFrame = CFrame.new(targetHRP.Position + offset)
+ 
+    -- أطلق كل Tool
+    for _, tool in ipairs(myChar:GetChildren()) do
+        if tool:IsA("Tool") then
+            pcall(function() tool:Activate() end)
+            for _, obj in ipairs(tool:GetDescendants()) do
+                if obj:IsA("RemoteEvent") then
+                    pcall(function()
+                        obj:FireServer(
+                            targetHead and targetHead.Position or targetHRP.Position,
+                            targetChar,
+                            targetHRP
+                        )
+                    end)
+                end
+            end
+        end
+    end
+ 
+    -- ارجع لمكانك
+    task.defer(function()
+        if myHRP and myHRP.Parent then
+            myHRP.CFrame = originalCF
+        end
+    end)
+end
+ 
+-- Loop الـ Auto Shoot
+task.spawn(function()
+    while true do
+        task.wait(CFG.AutoShootDelay)
+        if not states.autoShoot then continue end
+        if not currentTarget or not currentTarget.Character then continue end
+        local now = tick()
+        if now - lastShootTime < CFG.AutoShootDelay then continue end
+        lastShootTime = now
+        simulateShoot(currentTarget.Character)
+    end
+end)
+ 
+-- =============================================
+-- Hook Tool للـ One Shot (لما تضرب يدوياً)
+-- =============================================
+local function hookTool(tool)
+    local handle = tool:FindFirstChild("Handle")
+    if handle then
+        handle.Touched:Connect(function(hit)
+            if not states.oneShot then return end
+            local char = hit.Parent
+            if char == getMyChar() then return end
+            -- تأكد إنه لاعب
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Character == char then killChar(char); break end
+            end
+        end)
+    end
+    -- عترض FireServer في الـ Tool
+    for _, obj in ipairs(tool:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            pcall(function()
+                local oldFire = obj.FireServer
+                obj.FireServer = newcclosure(function(self, ...)
+                    if states.oneShot and currentTarget and currentTarget.Character then
+                        killChar(currentTarget.Character)
+                    end
+                    return oldFire(self, ...)
+                end)
+            end)
+        end
+    end
+end
+ 
+local function setupChar(char)
+    char.ChildAdded:Connect(function(c)
+        if c:IsA("Tool") then task.wait(0.05); hookTool(c) end
+    end)
+    for _, c in ipairs(char:GetChildren()) do
+        if c:IsA("Tool") then hookTool(c) end
+    end
+end
+ 
+player.CharacterAdded:Connect(function(char) task.wait(0.5); setupChar(char) end)
+if player.Character then setupChar(player.Character) end
+ 
+-- =============================================
+-- Speed
+-- =============================================
+RunService.Heartbeat:Connect(function()
+    if not states.speed then return end
+    local hum = getMyHum()
+    if hum then hum.WalkSpeed = CFG.WalkSpeed end
+end)
+ 
+-- =============================================
+-- Infinite Health
+-- =============================================
+RunService.Heartbeat:Connect(function()
+    if not states.infHealth then return end
+    local hum = getMyHum()
+    if not hum then return end
+    pcall(function() hum.MaxHealth = math.huge end)
+    pcall(function() hum.Health    = math.huge end)
+end)
+ 
+-- =============================================
+-- Auto Ability
+-- =============================================
+local abilityKeywords = {
+    "ability","skill","power","spell","attack","dash","blast","strike",
+    "punch","fire","ice","q","e","r","ultimate","قدرة","مهارة"
+}
+local function isAbility(tool)
+    local name = tool.Name:lower()
+    for _, kw in ipairs(abilityKeywords) do
+        if name:find(kw) then return true end
+    end
+    for _, obj in ipairs(tool:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then return true end
+    end
+    return false
+end
+ 
+local function useAbility(tool)
+    pcall(function() tool:Activate() end)
+    for _, obj in ipairs(tool:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            pcall(function()
+                local tgt = currentTarget and currentTarget.Character
+                local hrp = tgt and tgt:FindFirstChild("HumanoidRootPart")
+                obj:FireServer(hrp and hrp.Position or Vector3.new(0,0,0))
+            end)
+        end
+    end
+end
+ 
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not states.autoAbil then continue end
+        local char = getMyChar(); if not char then continue end
+        for _, obj in ipairs(char:GetChildren()) do
+            if obj:IsA("Tool") and isAbility(obj) then useAbility(obj) end
+        end
+        local bp = player:FindFirstChild("Backpack")
+        if bp then
+            for _, obj in ipairs(bp:GetChildren()) do
+                if obj:IsA("Tool") and isAbility(obj) then
+                    local hum = getMyHum()
+                    if hum then pcall(function() hum:EquipTool(obj) end) end
+                    break
+                end
+            end
+        end
+    end
+end)
+ 
+-- =============================================
+-- Auto Farm
+-- =============================================
+task.spawn(function()
+    while true do
+        task.wait(CFG.AutoFarmDelay)
+        if not states.autoFarm then continue end
+        local char  = getMyChar()
+        local myHRP = getMyHRP()
+        local hum   = getMyHum()
+        if not char or not myHRP or not hum then continue end
+ 
+        local target, dist = getClosestByDist()
+        if not target or not target.Character then continue end
+        local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+        if not tHRP then continue end
+ 
+        if dist > 6 then
+            hum:MoveTo(tHRP.Position)
+        else
+            killChar(target.Character)
+            if states.autoAbil then
+                for _, obj in ipairs(char:GetChildren()) do
+                    if obj:IsA("Tool") then useAbility(obj) end
+                end
+            end
+        end
+    end
+end)
+ 
+-- =============================================
+-- RenderStepped: AimBot + Target Update
+-- =============================================
+RunService.RenderStepped:Connect(function()
+    local enemy = getClosestOnScreen()
+    currentTarget = enemy
+ 
+    -- ESP: مربع أخضر لما الـ Aim Bot شغّال وفيه هدف
+    if states.aimBot and enemy then
+        setHighlight(enemy)
+    else
+        clearHighlights()
+    end
+ 
+    -- AimBot: حرّك الكاميرا
+    if states.aimBot and enemy and enemy.Character then
+        local head = enemy.Character:FindFirstChild("Head")
+        local hrp  = enemy.Character:FindFirstChild("HumanoidRootPart")
+        local pos  = head and head.Position or (hrp and hrp.Position)
+        if pos then
+            camera.CFrame = camera.CFrame:Lerp(
+                CFrame.new(camera.CFrame.Position, pos), CFG.AimSmoothing)
+        end
+    end
+end)
+ 
+-- =============================================
+-- GUI
+-- =============================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ProHubV6"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+ 
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 295, 0, 570)
+mainFrame.Position = UDim2.new(0, 18, 0.5, -285)
+mainFrame.BackgroundColor3 = Color3.fromRGB(13, 13, 18)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true; mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
+local mStr = Instance.new("UIStroke", mainFrame)
+mStr.Color = Color3.fromRGB(0, 200, 80); mStr.Thickness = 1.2
+ 
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 46)
+titleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+titleBar.BorderSizePixel = 0; titleBar.Parent = mainFrame
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 14)
+ 
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1,-50,1,0); titleLbl.Position = UDim2.new(0,14,0,0)
+titleLbl.BackgroundTransparency = 1; titleLbl.Text = "⚡  Pro Hub  v6.0"
+titleLbl.TextColor3 = Color3.fromRGB(255,255,255); titleLbl.TextSize = 16
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left; titleLbl.Parent = titleBar
+ 
+local hideBtn = Instance.new("TextButton")
+hideBtn.Size = UDim2.new(0,28,0,28); hideBtn.Position = UDim2.new(1,-38,0.5,-14)
+hideBtn.BackgroundColor3 = Color3.fromRGB(35,35,50); hideBtn.Text = "−"
+hideBtn.TextColor3 = Color3.fromRGB(200,200,200); hideBtn.TextSize = 20
+hideBtn.Font = Enum.Font.GothamBold; hideBtn.BorderSizePixel = 0; hideBtn.Parent = titleBar
+Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 7)
+ 
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1,0,1,-50); content.Position = UDim2.new(0,0,0,50)
+content.BackgroundTransparency = 1; content.Parent = mainFrame
+ 
+local showBtn = Instance.new("TextButton")
+showBtn.Size = UDim2.new(0,145,0,34); showBtn.Position = UDim2.new(0,18,0.5,-17)
+showBtn.BackgroundColor3 = Color3.fromRGB(18,18,26); showBtn.Text = "⚡ Pro Hub"
+showBtn.TextColor3 = Color3.fromRGB(255,255,255); showBtn.TextSize = 14
+showBtn.Font = Enum.Font.GothamBold; showBtn.BorderSizePixel = 0
+showBtn.Visible = false; showBtn.Parent = screenGui
+Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0, 9)
+local ss = Instance.new("UIStroke", showBtn)
+ss.Color = Color3.fromRGB(0,200,80); ss.Thickness = 1
+ 
+local function createToggle(icon, label, sub, yPos, color, onToggle)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1,-20,0,58); row.Position = UDim2.new(0,10,0,yPos)
+    row.BackgroundColor3 = Color3.fromRGB(20,20,28); row.BorderSizePixel = 0
+    row.Parent = content
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0,10)
+ 
+    local ic = Instance.new("TextLabel"); ic.Size = UDim2.new(0,30,1,0)
+    ic.Position = UDim2.new(0,10,0,0); ic.BackgroundTransparency = 1
+    ic.Text = icon; ic.TextSize = 20; ic.Font = Enum.Font.GothamBold; ic.Parent = row
+ 
+    local ml = Instance.new("TextLabel"); ml.Size = UDim2.new(0.62,0,0.5,0)
+    ml.Position = UDim2.new(0,44,0,6); ml.BackgroundTransparency = 1
+    ml.Text = label; ml.TextColor3 = Color3.fromRGB(235,235,235)
+    ml.TextSize = 14; ml.Font = Enum.Font.GothamBold
+    ml.TextXAlignment = Enum.TextXAlignment.Left; ml.Parent = row
+ 
+    local sl = Instance.new("TextLabel"); sl.Size = UDim2.new(0.62,0,0.38,0)
+    sl.Position = UDim2.new(0,44,0.54,0); sl.BackgroundTransparency = 1
+    sl.Text = sub; sl.TextColor3 = Color3.fromRGB(75,75,105)
+    sl.TextSize = 10.5; sl.Font = Enum.Font.Gotham
+    sl.TextXAlignment = Enum.TextXAlignment.Left; sl.Parent = row
+ 
+    local sbg = Instance.new("Frame"); sbg.Size = UDim2.new(0,48,0,26)
+    sbg.Position = UDim2.new(1,-60,0.5,-13)
+    sbg.BackgroundColor3 = Color3.fromRGB(38,38,52); sbg.BorderSizePixel = 0; sbg.Parent = row
+    Instance.new("UICorner", sbg).CornerRadius = UDim.new(0,13)
+ 
+    local knob = Instance.new("Frame"); knob.Size = UDim2.new(0,20,0,20)
+    knob.Position = UDim2.new(0,3,0.5,-10)
+    knob.BackgroundColor3 = Color3.fromRGB(140,140,155); knob.BorderSizePixel = 0; knob.Parent = sbg
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(0,10)
+ 
+    local isOn = false
+    local function set(v)
+        isOn = v
+        TweenService:Create(knob, TweenInfo.new(0.12), {
+            Position = isOn and UDim2.new(1,-23,0.5,-10) or UDim2.new(0,3,0.5,-10),
+            BackgroundColor3 = isOn and Color3.fromRGB(255,255,255) or Color3.fromRGB(140,140,155)
+        }):Play()
+        TweenService:Create(sbg, TweenInfo.new(0.12), {
+            BackgroundColor3 = isOn and color or Color3.fromRGB(38,38,52)
+        }):Play()
+        if onToggle then onToggle(isOn) end
+    end
+ 
+    local hb = Instance.new("TextButton"); hb.Size = UDim2.new(1,0,1,0)
+    hb.BackgroundTransparency = 1; hb.Text = ""; hb.Parent = row
+    hb.MouseButton1Click:Connect(function() set(not isOn) end)
+    return set
+end
+ 
+-- =============================================
+-- الـ Toggles
+-- =============================================
+createToggle("🎯","Aim Bot","يلوك على الهدف + مربع أخضر", 4,
+    Color3.fromRGB(0,210,90), function(on) states.aimBot = on end)
+ 
+createToggle("🔫","Auto Shoot","يطلق تلقائياً لما يظهر المربع", 68,
+    Color3.fromRGB(255,120,0), function(on) states.autoShoot = on end)
+ 
+createToggle("⚔️","Auto Farm","يمشي للأعداء ويضربهم لوحده", 132,
+    Color3.fromRGB(255,80,80), function(on) states.autoFarm = on end)
+ 
+createToggle("💀","One Shot","أول ضربة / طلقة تقتل فوراً", 196,
+    Color3.fromRGB(220,50,50), function(on) states.oneShot = on end)
+ 
+createToggle("⚡","Speed","سرعة مشي 100", 260,
+    Color3.fromRGB(255,200,0), function(on)
+        states.speed = on
+        local hum = getMyHum()
+        if hum then hum.WalkSpeed = on and CFG.WalkSpeed or 16 end
+    end)
+ 
+createToggle("💚","Infinite Health","ما يموت أبداً", 324,
+    Color3.fromRGB(0,220,100), function(on) states.infHealth = on end)
+ 
+createToggle("✨","Auto Ability","يختار ويستخدم القدرة تلقائياً", 388,
+    Color3.fromRGB(180,80,255), function(on) states.autoAbil = on end)
+ 
+-- فاصل
+local div = Instance.new("Frame"); div.Size = UDim2.new(1,-20,0,1)
+div.Position = UDim2.new(0,10,0,456); div.BackgroundColor3 = Color3.fromRGB(35,35,50)
+div.BorderSizePixel = 0; div.Parent = content
+ 
+-- Target Info
+local targetInfo = Instance.new("TextLabel")
+targetInfo.Size = UDim2.new(1,-20,0,28); targetInfo.Position = UDim2.new(0,10,0,462)
+targetInfo.BackgroundTransparency = 1; targetInfo.Text = "🎯  Target: None"
+targetInfo.TextColor3 = Color3.fromRGB(120,120,140)
+targetInfo.TextSize = 12; targetInfo.Font = Enum.Font.GothamBold
+targetInfo.TextXAlignment = Enum.TextXAlignment.Left; targetInfo.Parent = content
+ 
+-- تلميح
+local tip = Instance.new("TextLabel")
+tip.Size = UDim2.new(1,-20,0,40); tip.Position = UDim2.new(0,10,0,492)
+tip.BackgroundTransparency = 1
+tip.Text = "💡 فعّل Aim Bot + Auto Shoot + One Shot\nللقتل التلقائي الكامل"
+tip.TextColor3 = Color3.fromRGB(60,60,90); tip.TextSize = 10.5
+tip.Font = Enum.Font.Gotham; tip.TextWrapped = true
+tip.TextXAlignment = Enum.TextXAlignment.Left; tip.Parent = content
+ 
+RunService.RenderStepped:Connect(function()
+    if currentTarget then
+        targetInfo.Text = "🎯  " .. currentTarget.Name
+        targetInfo.TextColor3 = Color3.fromRGB(0,220,90)
+    else
+        targetInfo.Text = "🎯  Target: None"
+        targetInfo.TextColor3 = Color3.fromRGB(120,120,140)
+    end
+end)
+ 
+-- إخفاء / إظهار
+local hubVisible = true
+local function setVisible(v)
+    hubVisible = v; mainFrame.Visible = v; showBtn.Visible = not v
+end
+hideBtn.MouseButton1Click:Connect(function() setVisible(false) end)
+showBtn.MouseButton1Click:Connect(function() setVisible(true) end)
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == CFG.ToggleKey then setVisible(not hubVisible) end
+end)
+ 
+player.CharacterAdded:Connect(function(char)
+    task.wait(0.5); clearHighlights(); currentTarget = nil; setupChar(char)
+    if states.speed then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = CFG.WalkSpeed end
+    end
+end)
+ 
+print("[Pro Hub v6.0] ✅ Ready! INSERT = hide/show")
+ 

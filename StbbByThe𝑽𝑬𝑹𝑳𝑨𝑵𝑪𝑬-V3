@@ -1194,98 +1194,107 @@ UIS.InputBegan:Connect(function(input, gp)
     end
 end)
 -- ====================== END [ KEY HIDE GUI ======================
--- ====================== MOBILE SPOOF ======================
-local mobileSpoofEnabled = false
-local mobileSpoofBtn = Instance.new("TextButton", main)
-mobileSpoofBtn.Size = UDim2.new(1, -20, 0, 24)
-mobileSpoofBtn.Position = UDim2.new(0, 10, 0, 346)
-mobileSpoofBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 120)
-mobileSpoofBtn.BorderSizePixel = 0
-mobileSpoofBtn.Text = "📱 Mobile Spoof: OFF"
-mobileSpoofBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-mobileSpoofBtn.TextSize = 13
-mobileSpoofBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", mobileSpoofBtn).CornerRadius = UDim.new(0, 6)
+-- ====================== MOBILE SPOOF V2 ======================
+local function enableMobileSpoofV2()
+    pcall(function()
+        -- الطريقة الصح عبر الـ CoreGui modules
+        local RobloxGui = game:GetService("CoreGui"):WaitForChild("RobloxGui")
+        
+        -- 1. SetSmallTouchDevice
+        local setSmall = RobloxGui.Modules:FindFirstChild("SetSmallTouchDevice", true)
+        if setSmall then
+            pcall(function() require(setSmall)(true) end)
+        end
+        
+        -- 2. SetIsSmallTouchScreen  
+        local setTouch = RobloxGui.Modules:FindFirstChild("SetIsSmallTouchScreen", true)
+        if setTouch then
+            pcall(function() require(setTouch)(true) end)
+        end
 
-main.Size = UDim2.new(0, 340, 0, 438)
+        -- 3. TouchControls - فعّل الـ touch controls
+        local touchControls = RobloxGui.Modules:FindFirstChild("TouchControls", true)
+        if touchControls then
+            pcall(function() require(touchControls) end)
+        end
 
--- عدّل مواقع الأزرار الثانية تحته
-altKeysBtn.Position   = UDim2.new(0, 10,  0, 405)
-radarBtn.Position     = UDim2.new(0, 120, 0, 405)
-christmasBtn.Position = UDim2.new(0, 230, 0, 405)
+        -- 4. shouldRejectMultiTouch - خليها false
+        local rejectMulti = RobloxGui.Modules:FindFirstChild("shouldRejectMultiTouch", true)
+        if rejectMulti then
+            pcall(function() require(rejectMulti)(false) end)
+        end
+    end)
 
-local spoofConnection = nil
-
-local function enableMobileSpoof()
-    -- اخفي كل أزرار الـ TouchGui الأصلية وحط مكانها
+    -- 5. metatable على UserInputService
     pcall(function()
         local uis = game:GetService("UserInputService")
-        -- خدعة الجوال الأساسية
         local mt = getrawmetatable(game)
         local oldIndex = mt.__index
         setreadonly(mt, false)
         mt.__index = newcclosure(function(self, key)
-            if self == uis and key == "TouchEnabled" then
-                return mobileSpoofEnabled
-            end
-            if self == uis and key == "GamepadEnabled" then
-                return false
+            if self == uis then
+                if key == "TouchEnabled" then return true end
+                if key == "GamepadEnabled" then return false end
+                if key == "MouseEnabled" then return false end
+                if key == "KeyboardEnabled" then return false end
             end
             return oldIndex(self, key)
         end)
         setreadonly(mt, true)
     end)
 
-    -- طريقة ثانية - VirtualInputManager
-    pcall(function()
-        VIM:SetMouseButtonState(0, false)
-    end)
-
-    -- طريقة ثالثة - تفعيل TouchGui
+    -- 6. فعّل TouchGui مباشرة
     pcall(function()
         local CoreGui = game:GetService("CoreGui")
         local TouchGui = CoreGui:FindFirstChild("TouchGui")
-        if TouchGui then
-            TouchGui.Enabled = mobileSpoofEnabled
-            local TouchControlFrame = TouchGui:FindFirstChild("TouchControlFrame")
-            if TouchControlFrame then
-                TouchControlFrame.Visible = mobileSpoofEnabled
-            end
+        if not TouchGui then
+            TouchGui = Instance.new("ScreenGui")
+            TouchGui.Name = "TouchGui"
+            TouchGui.Parent = CoreGui
         end
+        TouchGui.Enabled = true
+
+        local frame = TouchGui:FindFirstChild("TouchControlFrame")
+        if frame then frame.Visible = true end
     end)
 
-    -- طريقة رابعة - StarterGui
+    -- 7. انتظر وشغّل الـ ControlModule
     pcall(function()
-        game:GetService("StarterGui"):SetCore("TopbarEnabled", true)
+        local ControlModule = require(game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"))
+        if ControlModule then
+            ControlModule:Enable(true)
+        end
     end)
 
-    -- طريقة خامسة - simulate touch
-    if mobileSpoofEnabled then
-        spoofConnection = RunService.Heartbeat:Connect(function()
-            pcall(function()
-                VIM:SendTouchEvent(0, Vector2.new(0, 0), Enum.UserInputState.Cancel)
-            end)
+    print("[STBB] Mobile Spoof V2 ON")
+end
+
+local function disableMobileSpoofV2()
+    pcall(function()
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        -- ارجع الـ metatable لطبيعتها
+        local uis = game:GetService("UserInputService")
+        local oldIndex = mt.__index
+        mt.__index = newcclosure(function(self, key)
+            return oldIndex(self, key)
         end)
-    else
-        if spoofConnection then
-            spoofConnection:Disconnect()
-            spoofConnection = nil
-        end
-    end
+        setreadonly(mt, true)
+    end)
+    print("[STBB] Mobile Spoof V2 OFF")
 end
 
 mobileSpoofBtn.MouseButton1Click:Connect(function()
     mobileSpoofEnabled = not mobileSpoofEnabled
-    enableMobileSpoof()
     if mobileSpoofEnabled then
+        enableMobileSpoofV2()
         mobileSpoofBtn.BackgroundColor3 = Color3.fromRGB(30, 120, 220)
         mobileSpoofBtn.Text = "📱 Mobile Spoof: ON"
-        print("[STBB] Mobile Spoof ON - Game thinks you're on mobile")
     else
+        disableMobileSpoofV2()
         mobileSpoofBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 120)
         mobileSpoofBtn.Text = "📱 Mobile Spoof: OFF"
-        print("[STBB] Mobile Spoof OFF")
     end
 end)
--- ====================== END MOBILE SPOOF ======================
+-- ====================== END MOBILE SPOOF V2 ======================
 print("[STBB] Loaded | P = Toggle")

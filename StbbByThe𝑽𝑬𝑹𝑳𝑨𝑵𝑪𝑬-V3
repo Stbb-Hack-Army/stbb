@@ -1037,4 +1037,88 @@ local ny = worldDiff.Z / RADAR_RANGE
     end
 end)
 -- ====================== END RADAR ======================
+-- ====================== CHRISTMAS MODE AUTO SELECT ======================
+local function clickButton(btn)
+    if not btn then return end
+    pcall(function()
+        local abs = btn.AbsolutePosition
+        local size = btn.AbsoluteSize
+        local cx = abs.X + size.X / 2
+        local cy = abs.Y + size.Y / 2
+        VIM:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+        task.wait(0.1)
+        VIM:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+    end)
+end
+
+local function autoSelectChristmas()
+    local pg = lp:FindFirstChild("PlayerGui")
+    if not pg then return end
+
+    local function getBtn(name)
+        local play = pg:FindFirstChild("Play")
+        if not play then return nil end
+        local main = play:FindFirstChild("Main")
+        if not main then return nil end
+        return main:FindFirstChild(name)
+    end
+
+    -- خطوة 1: افتح الـ Vote UI
+    local voteUI = pg:FindFirstChild("Play")
+    if voteUI and not voteUI.Enabled then
+        -- انتظر ما يفتح لوحده او اضغط زر الفتح
+        print("[STBB] Waiting for Vote UI...")
+    end
+
+    task.wait(0.5)
+
+    -- خطوة 2: Next
+    local nextBtn = getBtn("Next")
+    if nextBtn then
+        clickButton(nextBtn)
+        print("[STBB] Clicked Next")
+    end
+    task.wait(0.6)
+
+    -- خطوة 3: Christmas
+    local christmasBtn = getBtn("Christmas")
+    if christmasBtn then
+        clickButton(christmasBtn)
+        print("[STBB] Clicked Christmas")
+    end
+    task.wait(0.6)
+
+    -- خطوة 4: VoteButton
+    local voteBtn = getBtn("VoteButton")
+    if voteBtn then
+        clickButton(voteBtn)
+        print("[STBB] Clicked VoteButton")
+    end
+
+    print("[STBB] Christmas mode selected!")
+end
+
+-- زر في الـ GUI
+local christmasBtn = Instance.new("TextButton", main)
+christmasBtn.Size = UDim2.new(0, 150, 0, 24)
+christmasBtn.Position = UDim2.new(0, 120, 0, 375)
+christmasBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 160)
+christmasBtn.BorderSizePixel = 0
+christmasBtn.Text = "🎄 Christmas Mode"
+christmasBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+christmasBtn.TextSize = 12
+christmasBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", christmasBtn).CornerRadius = UDim.new(0, 6)
+
+main.Size = UDim2.new(0, 340, 0, 408)
+
+christmasBtn.MouseButton1Click:Connect(function()
+    task.spawn(autoSelectChristmas)
+end)
+
+-- تشغيل تلقائي عند بداية السكربت
+task.delay(3, function()
+    task.spawn(autoSelectChristmas)
+end)
+-- ====================== END CHRISTMAS MODE ======================
 print("[STBB] Loaded | P = Toggle")

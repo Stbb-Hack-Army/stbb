@@ -1121,4 +1121,77 @@ task.delay(3, function()
     task.spawn(autoSelectChristmas)
 end)
 -- ====================== END CHRISTMAS MODE ======================
+-- ====================== CUSTOM ABILITY KEYS ======================
+-- ====================== Ability Keys ======================
+local defaultKeys = {
+    Enum.KeyCode.Q, Enum.KeyCode.E, Enum.KeyCode.R, Enum.KeyCode.T,
+    Enum.KeyCode.G, Enum.KeyCode.H, Enum.KeyCode.J, Enum.KeyCode.X,
+    Enum.KeyCode.C, Enum.KeyCode.V
+}
+
+local altKeys = {
+    Enum.KeyCode.Q, Enum.KeyCode.E, Enum.KeyCode.R, Enum.KeyCode.T,
+    Enum.KeyCode.Y, Enum.KeyCode.U, Enum.KeyCode.F, Enum.KeyCode.G,
+    Enum.KeyCode.H, Enum.KeyCode.J, Enum.KeyCode.Z, Enum.KeyCode.X,
+    Enum.KeyCode.C, Enum.KeyCode.V, Enum.KeyCode.B
+}
+
+local useAltKeys = false
+
+local altKeysBtn = Instance.new("TextButton", main)
+altKeysBtn.Size = UDim2.new(0, 100, 0, 24)
+altKeysBtn.Position = UDim2.new(0, 10, 0, 375)
+altKeysBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 100)
+altKeysBtn.BorderSizePixel = 0
+altKeysBtn.Text = "🎮 Keys: Default"
+altKeysBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+altKeysBtn.TextSize = 11
+altKeysBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", altKeysBtn).CornerRadius = UDim.new(0, 6)
+
+altKeysBtn.MouseButton1Click:Connect(function()
+    useAltKeys = not useAltKeys
+    if useAltKeys then
+        -- طبّق الكيز الجديدة
+        for i, ab in ipairs(abilityKeys) do
+            ab.key = altKeys[i] or defaultKeys[i]
+        end
+        altKeysBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 200)
+        altKeysBtn.Text = "🎮 Keys: Y U Z..."
+        print("[STBB] Alt keys ON: Y U Z V B G H")
+    else
+        -- ارجع للكيز الافتراضية
+        for i, ab in ipairs(abilityKeys) do
+            ab.key = defaultKeys[i]
+        end
+        altKeysBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 100)
+        altKeysBtn.Text = "🎮 Keys: Default"
+        print("[STBB] Default keys restored")
+    end
+end)
+
+-- عدّل مواقع الأزرار الثلاثة
+altKeysBtn.Position    = UDim2.new(0, 10,  0, 375)
+-- radarBtn و christmasBtn موجودين قبل هذا الكود
+-- بس عدّل مواقعهم هنا
+radarBtn.Position      = UDim2.new(0, 120, 0, 375)
+christmasBtn.Position  = UDim2.new(0, 230, 0, 375)
+
+main.Size = UDim2.new(0, 340, 0, 408)
+-- ====================== END CUSTOM ABILITY KEYS ======================
+
+-- ====================== [ KEY HIDE GUI ======================
+local guiHidden = false
+local SHOWN_POS = UDim2.new(1, -355, 0, 15)
+local HIDDEN_POS = UDim2.new(1, 20, 0, 15)  -- برا الشاشه على اليمين
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.LeftBracket then
+        guiHidden = not guiHidden
+        main.Position = guiHidden and HIDDEN_POS or SHOWN_POS
+        print(guiHidden and "[STBB] GUI Hidden" or "[STBB] GUI Shown")
+    end
+end)
+-- ====================== END [ KEY HIDE GUI ======================
 print("[STBB] Loaded | P = Toggle")

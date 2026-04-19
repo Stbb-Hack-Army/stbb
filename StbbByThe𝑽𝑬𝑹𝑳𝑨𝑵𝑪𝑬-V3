@@ -1194,107 +1194,87 @@ UIS.InputBegan:Connect(function(input, gp)
     end
 end)
 -- ====================== END [ KEY HIDE GUI ======================
--- ====================== MOBILE SPOOF V2 ======================
-local function enableMobileSpoofV2()
+-- ====================== MOBILE BUTTONS AUTO PRESS ======================
+local mobileEnabled = false
+local MOBILE_GUI = "MobileSupport"
+
+local mobileButtons = {
+    "EButton", "TButton", "YButton", "RButton", "LMBButton",
+    "QButton", "DashButton", "RunButton", "FButton", "GButton",
+    "JButton", "HButton", "ZButton", "XButton", "CButton",
+    "VButton", "UButton", "BButton", "UpButton", "DownButton"
+}
+
+local function clickMobileBtn(btn)
+    if not btn or not btn.Visible then return end
     pcall(function()
-        -- الطريقة الصح عبر الـ CoreGui modules
-        local RobloxGui = game:GetService("CoreGui"):WaitForChild("RobloxGui")
-        
-        -- 1. SetSmallTouchDevice
-        local setSmall = RobloxGui.Modules:FindFirstChild("SetSmallTouchDevice", true)
-        if setSmall then
-            pcall(function() require(setSmall)(true) end)
-        end
-        
-        -- 2. SetIsSmallTouchScreen  
-        local setTouch = RobloxGui.Modules:FindFirstChild("SetIsSmallTouchScreen", true)
-        if setTouch then
-            pcall(function() require(setTouch)(true) end)
-        end
-
-        -- 3. TouchControls - فعّل الـ touch controls
-        local touchControls = RobloxGui.Modules:FindFirstChild("TouchControls", true)
-        if touchControls then
-            pcall(function() require(touchControls) end)
-        end
-
-        -- 4. shouldRejectMultiTouch - خليها false
-        local rejectMulti = RobloxGui.Modules:FindFirstChild("shouldRejectMultiTouch", true)
-        if rejectMulti then
-            pcall(function() require(rejectMulti)(false) end)
-        end
+        local abs = btn.AbsolutePosition
+        local size = btn.AbsoluteSize
+        local cx = abs.X + size.X / 2
+        local cy = abs.Y + size.Y / 2
+        VIM:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+        task.wait(0.03)
+        VIM:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
     end)
+end
 
-    -- 5. metatable على UserInputService
-    pcall(function()
-        local uis = game:GetService("UserInputService")
-        local mt = getrawmetatable(game)
-        local oldIndex = mt.__index
-        setreadonly(mt, false)
-        mt.__index = newcclosure(function(self, key)
-            if self == uis then
-                if key == "TouchEnabled" then return true end
-                if key == "GamepadEnabled" then return false end
-                if key == "MouseEnabled" then return false end
-                if key == "KeyboardEnabled" then return false end
+local function getMobileMain()
+    local pg = lp:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local ms = pg:FindFirstChild(MOBILE_GUI)
+    if not ms then return nil end
+    return ms:FindFirstChild("Main")
+end
+
+local mobileConnection = nil
+
+local function startMobilePress()
+    if mobileConnection then mobileConnection:Disconnect() end
+    mobileConnection = RunService.Heartbeat:Connect(function()
+        if not mobileEnabled then return end
+        local main = getMobileMain()
+        if not main then return end
+        for _, btnName in ipairs(mobileButtons) do
+            local btn = main:FindFirstChild(btnName)
+            if btn and btn.Visible then
+                clickMobileBtn(btn)
             end
-            return oldIndex(self, key)
-        end)
-        setreadonly(mt, true)
-    end)
-
-    -- 6. فعّل TouchGui مباشرة
-    pcall(function()
-        local CoreGui = game:GetService("CoreGui")
-        local TouchGui = CoreGui:FindFirstChild("TouchGui")
-        if not TouchGui then
-            TouchGui = Instance.new("ScreenGui")
-            TouchGui.Name = "TouchGui"
-            TouchGui.Parent = CoreGui
-        end
-        TouchGui.Enabled = true
-
-        local frame = TouchGui:FindFirstChild("TouchControlFrame")
-        if frame then frame.Visible = true end
-    end)
-
-    -- 7. انتظر وشغّل الـ ControlModule
-    pcall(function()
-        local ControlModule = require(game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"))
-        if ControlModule then
-            ControlModule:Enable(true)
         end
     end)
-
-    print("[STBB] Mobile Spoof V2 ON")
 end
 
-local function disableMobileSpoofV2()
-    pcall(function()
-        local mt = getrawmetatable(game)
-        setreadonly(mt, false)
-        -- ارجع الـ metatable لطبيعتها
-        local uis = game:GetService("UserInputService")
-        local oldIndex = mt.__index
-        mt.__index = newcclosure(function(self, key)
-            return oldIndex(self, key)
-        end)
-        setreadonly(mt, true)
-    end)
-    print("[STBB] Mobile Spoof V2 OFF")
+local function stopMobilePress()
+    if mobileConnection then
+        mobileConnection:Disconnect()
+        mobileConnection = nil
+    end
 end
 
-mobileSpoofBtn.MouseButton1Click:Connect(function()
-    mobileSpoofEnabled = not mobileSpoofEnabled
-    if mobileSpoofEnabled then
-        enableMobileSpoofV2()
-        mobileSpoofBtn.BackgroundColor3 = Color3.fromRGB(30, 120, 220)
-        mobileSpoofBtn.Text = "📱 Mobile Spoof: ON"
+-- زر في الـ GUI
+local mobileBtn = Instance.new("TextButton", main)
+mobileBtn.Size = UDim2.new(1, -20, 0, 24)
+mobileBtn.Position = UDim2.new(0, 10, 0, 346)
+mobileBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 120)
+mobileBtn.BorderSizePixel = 0
+mobileBtn.Text = "📱 Mobile Buttons: OFF"
+mobileBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileBtn.TextSize = 13
+mobileBtn.Font = Enum.Font.GothamBold
+Instance.new("UICorner", mobileBtn).CornerRadius = UDim.new(0, 6)
+
+mobileBtn.MouseButton1Click:Connect(function()
+    mobileEnabled = not mobileEnabled
+    if mobileEnabled then
+        mobileBtn.BackgroundColor3 = Color3.fromRGB(30, 120, 220)
+        mobileBtn.Text = "📱 Mobile Buttons: ON"
+        startMobilePress()
+        print("[STBB] Mobile Buttons ON")
     else
-        disableMobileSpoofV2()
-        mobileSpoofBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 120)
-        mobileSpoofBtn.Text = "📱 Mobile Spoof: OFF"
+        mobileBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 120)
+        mobileBtn.Text = "📱 Mobile Buttons: OFF"
+        stopMobilePress()
+        print("[STBB] Mobile Buttons OFF")
     end
 end)
--- ====================== END MOBILE SPOOF V2 ======================
+-- ====================== END MOBILE BUTTONS ======================
 print("[STBB] Loaded | P = Toggle")
